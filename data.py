@@ -47,8 +47,7 @@ def dict_list_mean(dl, keys):
             if d[i] == 1:
                 l.append(d['rating'])
         if l:
-             g[i] = np.nanmean(l)
+            g[i] = np.nanmean(l)
         else:
             g[i] = 0
     return g
-
