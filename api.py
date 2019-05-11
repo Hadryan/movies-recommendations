@@ -9,8 +9,6 @@ from data import dict_list_mean
 app = Flask(__name__)
 
 QUEUE_ALL, QUEUE_KEYS = 'all', 'keys'
-_ = db.list(QUEUE_ALL)
-_ = db.list(QUEUE_KEYS)
 
 
 def json_res(obj: dict, code: int):
@@ -105,7 +103,7 @@ if __name__ == '__main__':
     # app.run(debug=True)
 
     # Cheroot
-    server = Server(('localhost', 9898), PathInfoDispatcher({'/': app}))
+    server = Server(('localhost', 5000), PathInfoDispatcher({'/': app}))
     try:
         server.start()
     except KeyboardInterrupt:
