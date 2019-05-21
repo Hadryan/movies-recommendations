@@ -4,9 +4,9 @@ import numpy as np
 
 
 def create_df():
-    t1 = pd.read_csv('data/user_ratedmovies.dat', sep='\t', nrows=10000)
+    t1 = pd.read_csv('data/user_ratedmovies.dat', sep='\t', nrows=1000)
     t2 = pd.read_csv('data/movie_genres.dat', sep='\t').groupby(
-        ['movieID']).agg(lambda col: '|'.join('genre-' + col))
+        ['movieID']).agg(lambda col: '|'.join('genre_' + col))
     t2 = t2.join(t2.pop('genre').str.get_dummies('|'))
     return pd.merge(t1, t2, on='movieID')
 
@@ -16,27 +16,20 @@ def df_to_json(df):
     genre_keys = set()
     for _, row in df.iterrows():
         row_json = row.to_dict()
-        row_json['userID'] = str(int(row_json['userID']))
-        row_json['movieID'] = str(int(row_json['movieID']))
+        row_json['movie_id'] = str(int(row_json.pop('movieID')))
+        row_json['user_id'] = str(int(row_json.pop('userID')))
+        row_json = {k.lower(): v for k, v in row_json.items()}
         for k in row_json:
-            if k.startswith('genre-'):
-                genre_keys.add(k)
+            if k not in ('movie_id', 'user_id'):
+                row_json[k] = int(row_json[k])
+            if '-' in k:
+                new_key = k.replace('-', '_')
+                row_json[new_key] = row_json.pop(k)
+                if k.startswith('genre_'):
+                    genre_keys.add(new_key)
+
         json_df.append(row_json)
     return json_df, genre_keys
-
-
-def df_to_dict(df):
-    json_df = []
-    for _, row in df.iterrows():
-        row_json = row.to_dict()
-        row_json['userID'] = int(row_json['userID'])
-        row_json['movieID'] = int(row_json['movieID'])
-        json_df.append(row_json)
-    return json_df
-
-
-def dict_list_to_df(dl):
-    return pd.DataFrame(dl)
 
 
 def dict_list_mean(dl, keys):
