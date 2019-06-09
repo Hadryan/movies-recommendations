@@ -5,6 +5,7 @@ import random
 
 from data import dict_list_mean
 import cassandra_api as cassy
+import elasticsearch_client
 
 app = Flask(__name__)
 
@@ -14,6 +15,9 @@ KEYS = {'genre_action', 'genre_adventure', 'genre_animation', 'genre_children', 
         'genre_documentary', 'genre_drama', 'genre_fantasy', 'genre_film_noir', 'genre_horror', 'genre_imax',
         'genre_musical', 'genre_mystery', 'genre_romance', 'genre_sci_fi', 'genre_short', 'genre_thriller',
         'genre_war', 'genre_western', 'movie_id', 'user_id'}
+
+
+ec = elasticsearch_client.ElasticClient()
 
 
 def json_res(obj: dict, code: int):
@@ -80,6 +84,86 @@ def avg_genre_ratings_user_profile_route(user_id):
     for i in KEYS:
         prof[i] = g[i] - g_user[i]
     return json_res(prof, 200)
+
+
+@app.route('/documents/users/<int:user_id>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def user_doc(user_id):
+    if request.method == 'POST':
+        try:
+            _ = ec.get_users_doc(user_id)
+            return json_res({'error': 'Item exists'}, 400)
+        except:
+            pass
+        ec.add_users_doc(user_id, request.get_json(force=True))
+        return json_res({}, 201)
+
+    if request.method == 'PUT':
+        try:
+            _ = ec.get_users_doc(user_id)
+        except:
+            return json_res({'error': 'Not found'}, 404)
+        ec.update_users_doc(user_id, request.get_json(force=True))
+        return json_res({}, 201)
+
+    if request.method == 'DELETE':
+        try:
+            ec.rm_users_doc(user_id)
+            return json_res({}, 204)
+        except:
+            return json_res({'error': 'Not found'}, 404)
+
+    try:
+        return json_res(ec.get_users_doc(user_id), 200)
+    except:
+        return json_res({'error': 'Not found'}, 404)
+
+
+@app.route('/documents/movies/<int:movie_id>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def movie_doc(movie_id):
+    if request.method == 'POST':
+        try:
+            _ = ec.get_movies_doc(movie_id)
+            return json_res({'error': 'Item exists'}, 400)
+        except:
+            pass
+        ec.add_movies_doc(movie_id, request.get_json(force=True))
+        return json_res({}, 201)
+
+    if request.method == 'PUT':
+        try:
+            _ = ec.get_movies_doc(movie_id)
+        except:
+            return json_res({'error': 'Not found'}, 404)
+        ec.update_movies_doc(movie_id, request.get_json(force=True))
+        return json_res({}, 201)
+
+    if request.method == 'DELETE':
+        try:
+            ec.rm_movies_doc(movie_id)
+            return json_res({}, 204)
+        except:
+            return json_res({'error': 'Not found'}, 404)
+
+    try:
+        return json_res(ec.get_movies_doc(movie_id), 200)
+    except:
+        return json_res({'error': 'Not found'}, 404)
+
+
+@app.route('/documents/users/<int:user_id>/preselection', methods=['GET'])
+def user_doc_preselection(user_id):
+    try:
+        return json_res(ec.preselect_movies(user_id), 200)
+    except:
+        return json_res({'error': 'Not found'}, 404)
+
+
+@app.route('/documents/movies/<int:movie_id>/preselection', methods=['GET'])
+def movie_doc_preselection(movie_id):
+    try:
+        return json_res(ec.preselect_users(movie_id), 200)
+    except:
+        return json_res({'error': 'Not found'}, 404)
 
 
 if __name__ == '__main__':

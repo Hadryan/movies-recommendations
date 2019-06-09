@@ -14,7 +14,8 @@ class ElasticClient:
         df = pd.merge(df, means, on='userID', how="left", sort=False)
         df['ratingNormal'] = df['rating'] - df['ratingMean']
         ratings = df.loc[:, ['userID', 'movieID', 'ratingNormal']].rename(
-            columns={'ratingNormal': 'rating'}).pivot_table(index='userID', columns='movieID', values='rating').fillna(0)
+            columns={'ratingNormal': 'rating'}).pivot_table(
+                index='userID', columns='movieID', values='rating').fillna(0)
         print("Indexing users...")
         index_users = [{
             "_index": "users",
@@ -50,36 +51,135 @@ class ElasticClient:
         movie_id = int(movie_id)
         return self.es.get(index=index, doc_type="movie", id=movie_id)["_source"]
 
+    def get_doc(self, _id, index, doc_type):
+        return self.es.get(index=index, doc_type=doc_type, id=int(_id))
+
+    def get_movies_doc(self, _id):
+        return self.get_doc(_id, 'movies', 'movie')
+
+    def get_users_doc(self, _id):
+        return self.get_doc(_id, 'users', 'user')
+
+    def add_doc(self, _id, doc, index, doc_type):
+        self.es.create(index=index, id=int(_id), body=doc, doc_type=doc_type)
+
+    def add_movies_doc(self, _id, who_rated):
+        self.add_doc(_id, {'whoRated': who_rated}, 'movies', 'movie')
+
+    def add_users_doc(self, _id, ratings):
+        self.add_doc(_id, {'ratings': ratings}, 'users', 'user')
+        self._update_ratings(_id, ratings)
+
+    def update_doc(self, _id, doc, index, doc_type):
+        self.es.update(index=index, id=int(_id), doc_type=doc_type, body={'doc': doc})
+
+    def update_movies_doc(self, _id, who_rated):
+        self.update_doc(_id, {'whoRated': who_rated}, 'movies', 'movie')
+
+    def update_users_doc(self, _id, ratings):
+        self._update_ratings(_id, ratings)
+        self.update_doc(_id, {'ratings': ratings}, 'users', 'user')
+
+    def _update_ratings(self, _id, ratings):
+        _id = int(_id)
+        old_ratings = list(set(self.get_movies_liked_by_user(_id)['ratings']) - set(ratings))
+        for movie in ratings:
+            who_rated = self.get_movies_doc(movie)['_source']['whoRated']
+            if _id not in who_rated:
+                who_rated.append(_id)
+                self.update_movies_doc(movie, who_rated)
+
+        for movie in old_ratings:
+            who_rated = self.get_movies_doc(movie)['_source']['whoRated']
+            who_rated.remove(_id)
+            self.update_movies_doc(movie, who_rated)
+
+    def rm_doc(self, _id, index, doc_type):
+        self.es.delete(index, int(_id), doc_type=doc_type)
+
+    def rm_movies_doc(self, _id):
+        self.rm_doc(_id, 'movies', 'movie')
+
+    def rm_users_doc(self, _id):
+        _id = int(_id)
+        user_movies = self.get_movies_liked_by_user(_id)['ratings']
+        for movie in user_movies:
+            who_rated = self.get_movies_doc(movie)['_source']['whoRated']
+            who_rated.remove(_id)
+            self.update_movies_doc(movie, who_rated)
+        self.rm_doc(_id, 'users', 'user')
+
+    def preselect_movies(self, user_id):
+        user_movies = self.get_movies_liked_by_user(user_id)['ratings']
+        res = self.es.search(
+            index='users',
+            body={
+                'query': {
+                    'bool': {
+                        'must': {
+                            'terms': {
+                                'ratings': user_movies
+                            }
+                        },
+                    }
+                }
+            },
+            size=10,
+        )['hits']['hits']
+
+        return list({j for i in res for j in i['_source']['ratings']} - set(user_movies))[:10]
+
+    def preselect_users(self, movie_id):
+        movie_users = self.get_users_that_like_movie(movie_id)['whoRated']
+        res = self.es.search(
+            index='movies',
+            body={
+                'query': {
+                    'bool': {
+                        'must': {
+                            'terms': {
+                                'whoRated': movie_users
+                            }
+                        },
+                    }
+                }
+            },
+            size=10,
+        )['hits']['hits']
+
+        return list({j for i in res for j in i['_source']['whoRated']} - set(movie_users))[:10]
+
+    def list_index(self, index):
+        return self.es.search(
+            index=index,
+            body={'query': {
+                'match_all': {}}
+            }
+        )
+
+    def stats(self, index):
+        return self.es.indices.stats(index=index)
+
 
 if __name__ == "__main__":
     ec = ElasticClient()
+
+    # test data for 1000 rows:
+    # user: 75
+    # movie 296
+
     ec.index_documents()
-    user_document = ec.get_movies_liked_by_user(75)
-    movie_id = np.random.choice(user_document['ratings'])
-    movie_document = ec.get_users_that_like_movie(movie_id)
-    random_user_id = np.random.choice(movie_document['whoRated'])
-    random_user_document = ec.get_movies_liked_by_user(random_user_id)
-    print('User 75 likes following movies:')
-    print(user_document)
-    print('Movie {} is liked by following users:'.format(movie_id))
-    print(movie_document)
-    print('Is user 75 among users in movie {} document?'.format(movie_id))
-    print(movie_document['whoRated'].index(75) != -1)
-    import random
-    some_test_movie_ID = 1
-    print("Some test movie ID: ", some_test_movie_ID)
-    list_of_users_who_liked_movie_of_given_ID = ec.get_users_that_like_movie(some_test_movie_ID)["whoRated"]
-    print("List of users who liked the test movie: ", *list_of_users_who_liked_movie_of_given_ID)
-    index_of_random_user_who_liked_movie_of_given_ID = random.randint(0, len(list_of_users_who_liked_movie_of_given_ID))
-    print("Index of random user who liked the test movie: ",
-          index_of_random_user_who_liked_movie_of_given_ID)
-    some_test_user_ID = list_of_users_who_liked_movie_of_given_ID[index_of_random_user_who_liked_movie_of_given_ID]
-    print("ID of random user who liked the test movie: ", some_test_user_ID)
-    movies_liked_by_user_of_given_ID = ec.get_movies_liked_by_user(some_test_user_ID)["ratings"]
-    print("IDs of movies liked by the random user who liked the test movie: ",
-          *movies_liked_by_user_of_given_ID)
-    if some_test_movie_ID in movies_liked_by_user_of_given_ID:
-        print("As expected, the test movie ID is among the IDs of movies " +
-              "liked by the random user who liked the test movie ;-)")
-    else:
-        print('Something wrong')
+
+    res = ec.preselect_movies(75)
+    assert len(res) > 0
+    movies_test_user = ec.get_movies_liked_by_user(75)['ratings']
+    for movie in res:
+        assert movie not in movies_test_user
+        _ = ec.get_doc(movie, 'movies', 'movie')  # raises exception if movie is not found in elastic search
+
+    res = ec.preselect_users(296)
+    assert len(res) > 0
+    users_test_movie = ec.get_users_that_like_movie(296)['whoRated']
+    for user in res:
+        assert user not in users_test_movie
+        _ = ec.get_doc(user, 'users', 'user')  # raises exception if user is not found in elastic search
