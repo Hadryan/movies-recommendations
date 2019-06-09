@@ -1,13 +1,13 @@
 def create_keyspace(session, keyspace):
-    session.execute("""
-CREATE KEYSPACE IF NOT EXISTS """+keyspace+"""
-WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': '1' }
+    session.execute(f"""
+CREATE KEYSPACE IF NOT EXISTS {keyspace}
+WITH replication = {{ 'class': 'SimpleStrategy', 'replication_factor': '1' }}
 """)
 
 
 def create_table(session, keyspace, table):
-    session.execute("""
-CREATE TABLE IF NOT EXISTS """ + keyspace+"""."""+table+""" (
+    session.execute(f"""
+CREATE TABLE IF NOT EXISTS {keyspace}.{table} (
 user_id text, movie_id text, rating int,
 date_day int, date_month int, date_year int, date_hour int, date_minute int, date_second int,
 genre_action int,
@@ -37,9 +37,8 @@ PRIMARY KEY(user_id)
 
 
 def push_table(session, keyspace, table, rating):
-    session.execute(
-        """
-INSERT INTO """+keyspace+"""."""+table+""" (user_id, movie_id, rating,
+    session.execute(f"""
+INSERT INTO {keyspace}.{table} (user_id, movie_id, rating,
 date_day, date_month, date_year, date_hour, date_minute, date_second,
 genre_action, genre_adventure, genre_animation, genre_children, genre_comedy, genre_crime, genre_documentary,
 genre_drama, genre_fantasy, genre_film_noir, genre_horror, genre_imax, genre_musical, genre_mystery, genre_romance,
@@ -54,15 +53,15 @@ VALUES (
  %(genre_war)s, %(genre_western)s
 )
 """, rating
-    )
+                    )
 
 
 def list_table(session, keyspace, table):
-    rows = session.execute("SELECT * FROM "+keyspace+"."+table+";")
+    rows = session.execute(f"SELECT * FROM {keyspace}.{table};")
     if rows is None:
         return []
     return list(rows)
 
 
 def clear_table(session, keyspace, table):
-    session.execute("TRUNCATE "+keyspace+"."+table+";")
+    session.execute(f"TRUNCATE {keyspace}.{table};")
